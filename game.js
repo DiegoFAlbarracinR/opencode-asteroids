@@ -57,6 +57,41 @@ class Bullet {
   }
 }
 
+// ── Bala enemiga (OVNI) ───────────────────────────────────────────────────────
+class EnemyBullet {
+  constructor(x, y, angle) {
+    this.x = x;
+    this.y = y;
+    const SPEED = 170;
+    this.vx = Math.cos(angle) * SPEED;
+    this.vy = Math.sin(angle) * SPEED;
+    this.ttl    = 4;
+    this.radius = 3;
+    this.dead   = false;
+  }
+
+  update(dt) {
+    this.x = wrap(this.x + this.vx * dt, W);
+    this.y = wrap(this.y + this.vy * dt, H);
+    this.ttl -= dt;
+    if (this.ttl <= 0) this.dead = true;
+  }
+
+  draw() {
+    ctx.strokeStyle = 'rgba(255, 77, 255, 0.3)';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y);
+    ctx.lineTo(this.x - this.vx * 0.05, this.y - this.vy * 0.05);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ff4dff';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 // ── Asteroid ──────────────────────────────────────────────────────────────────
 const RADII  = [0, 16, 30, 50];   // por tamaño 1, 2, 3
 const SPEEDS = [0, 85, 55, 32];   // velocidad base por tamaño
@@ -167,6 +202,69 @@ for (const b of skinButtons) {
   b.addEventListener('click', () => selectSkin(b.dataset.skin));
 }
 syncSkinButtons();
+
+// ── OVNI (enemigo que dispara) ────────────────────────────────────────────────
+class OVNI {
+  constructor() {
+    this.dead         = false;
+    this.dir          = Math.random() < 0.5 ? 1 : -1;
+    this.x            = this.dir === 1 ? -30 : W + 30;
+    this.baseY        = rand(60, H - 60);
+    this.bobT         = rand(0, Math.PI * 2);
+    this.y            = this.baseY;
+    this.speed        = 90;
+    this.radius       = 18;
+    this.fireCooldown = rand(0.5, 1.2);
+    this.ttl          = 12;
+  }
+
+  update(dt) {
+    this.x     += this.dir * this.speed * dt;
+    this.bobT  += dt * 2;
+    this.y      = this.baseY + Math.sin(this.bobT) * 20;
+    this.fireCooldown -= dt;
+    if (this.fireCooldown <= 0) {
+      this.fireCooldown = 1.6;
+      enemyBullets.push(this.fire());
+    }
+    this.ttl -= dt;
+    if (this.x < -50 || this.x > W + 50 || this.ttl <= 0) this.dead = true;
+  }
+
+  fire() {
+    const angle = Math.atan2(ship.y - this.y, ship.x - this.x) + rand(-0.3, 0.3);
+    return new EnemyBullet(this.x, this.y, angle);
+  }
+
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.strokeStyle = '#c7f83e';
+    ctx.lineWidth   = 1.5;
+    ctx.lineJoin    = 'round';
+
+    // Cúpula
+    ctx.beginPath();
+    ctx.moveTo(-7, -4);
+    ctx.arc(0, -4, 7, Math.PI, 0);
+    ctx.stroke();
+
+    // Casco (platillo)
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, Math.PI, 0);
+    ctx.lineTo(17, 8);
+    ctx.lineTo(-17, 8);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Base del platillo
+    ctx.beginPath();
+    ctx.moveTo(-18, 4);
+    ctx.lineTo(18, 4);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
 
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
@@ -452,9 +550,10 @@ class EstrellaFugaz {
 
 // ── Partículas (explosión) ────────────────────────────────────────────────────
 class Particle {
-  constructor(x, y) {
+  constructor(x, y, rgb = '255,255,255') {
     this.x  = x;
     this.y  = y;
+    this.rgb = rgb;
     const angle = rand(0, Math.PI * 2);
     const speed = rand(30, 130);
     this.vx   = Math.cos(angle) * speed;
@@ -473,7 +572,7 @@ class Particle {
 
   draw() {
     const alpha = this.ttl / this.life;
-    ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+    ctx.strokeStyle = `rgba(${this.rgb},${alpha.toFixed(2)})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(this.x, this.y);
@@ -484,9 +583,11 @@ class Particle {
 
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, powerups, particles;
+let ovnis, enemyBullets;
 let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
 let deadTimer;
+let ovniTimer;
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -506,6 +607,9 @@ function initGame() {
   asteroids = [];
   powerups  = [];
   particles = [];
+  ovnis     = [];
+  enemyBullets = [];
+  ovniTimer = 15;
   score  = 0;
   lives  = 3;
   level  = 1;
@@ -518,12 +622,15 @@ function nextLevel() {
   bullets   = [];
   powerups  = [];
   particles = [];
+  ovnis     = [];
+  enemyBullets = [];
+  ovniTimer = rand(8, 14);
   ship.reset();
   spawnAsteroids(3 + level);
 }
 
-function explode(x, y, count = 8) {
-  for (let i = 0; i < count; i++) particles.push(new Particle(x, y));
+function explode(x, y, count = 8, rgb = '255,255,255') {
+  for (let i = 0; i < count; i++) particles.push(new Particle(x, y, rgb));
 }
 
 function killShip() {
@@ -598,9 +705,44 @@ function update(dt) {
         }
       }
     }
+    for (const o of ovnis) {
+      if (!o.dead && !b.dead && dist(b, o) < o.radius) {
+        b.dead = true;
+        o.dead = true;
+        score += 200;
+        explode(o.x, o.y, 12, '199, 248, 62');
+      }
+    }
   }
   asteroids = asteroids.filter(a => !a.dead).concat(newAsteroids);
   bullets   = bullets.filter(b => !b.dead);
+
+  // OVNI: aparición, movimiento y disparo
+  if (ovnis.length === 0) {
+    ovniTimer -= dt;
+    if (ovniTimer <= 0) {
+      ovnis.push(new OVNI());
+      ovniTimer = rand(10, 20);
+    }
+  }
+  enemyBullets.forEach(b => b.update(dt));
+  for (const o of ovnis) o.update(dt);
+
+  // Bala enemiga vs nave (el escudo la absorbe)
+  for (const b of enemyBullets) {
+    if (!b.dead && !ship.dead && ship.invincible <= 0 && dist(ship, b) < ship.radius + b.radius) {
+      if (ship.shield > 0) {
+        b.dead = true;
+        explode(b.x, b.y, 6, '0, 220, 255');
+      } else {
+        b.dead = true;
+        killShip();
+        break;
+      }
+    }
+  }
+  ovnis        = ovnis.filter(o => !o.dead);
+  enemyBullets = enemyBullets.filter(b => !b.dead);
 
   // Power-ups: movimiento, recogida con la nave
   powerups.forEach(p => p.update(dt));
@@ -622,7 +764,7 @@ function update(dt) {
   powerups = powerups.filter(p => !p.dead);
 
   // Nave vs asteroide
-  if (ship.invincible <= 0 && ship.shield <= 0) {
+  if (!ship.dead && ship.invincible <= 0 && ship.shield <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
         killShip();
@@ -734,6 +876,8 @@ function draw() {
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
   bullets.forEach(b => b.draw());
+  ovnis.forEach(o => o.draw());
+  enemyBullets.forEach(b => b.draw());
   powerups.forEach(p => p.draw());
   ship.draw();
 
