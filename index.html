@@ -17,10 +17,34 @@
       display: block;
       border: 1px solid #222;
     }
+    #skinbar {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 12px;
+      font-family: monospace;
+    }
+    #skinbar button {
+      background: #000;
+      color: #fff;
+      border: 1px solid #333;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    #skinbar button:hover { border-color: #fff; }
+    #skinbar button.active { border-color: #fff; background: #222; }
   </style>
 </head>
 <body>
   <canvas id="canvas" width="800" height="600"></canvas>
+  <div id="skinbar">
+    <button data-skin="classic">CLÁSICA</button>
+    <button data-skin="viper">VÍBORA</button>
+    <button data-skin="javelin">JABALINA</button>
+    <button data-skin="phoenix">FÉNIX</button>
+  </div>
   <script src="game.js"></script>
 </body>
 </html>
