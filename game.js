@@ -118,6 +118,56 @@ class Asteroid {
   }
 }
 
+// ── Skins de la nave ──────────────────────────────────────────────────────────
+const SKINS = [
+  { id: 'classic',  name: 'CLÁSICA',  stroke: '#fff',    flame: 'rgba(255,130,0,0.85)', body: [[20,0],[-12,-9],[-7,0],[-12,9]],   flameBase: -8 },
+  { id: 'viper',    name: 'VÍBORA',   stroke: '#ff5b4d', flame: 'rgba(255,80,40,0.85)',  body: [[21,0],[-6,-11],[-2,0],[-6,11]],   flameBase: -4 },
+  { id: 'javelin',  name: 'JABALINA', stroke: '#4de1ff', flame: 'rgba(80,220,255,0.85)', body: [[22,0],[-2,-6],[-10,0],[-2,6]],    flameBase: -11 },
+  { id: 'phoenix',  name: 'FÉNIX',    stroke: '#ffd24d', flame: 'rgba(255,180,60,0.85)', body: [[20,0],[-4,-12],[-14,-4],[-6,0],[-14,4],[-4,12]], flameBase: -7 },
+];
+
+const STORAGE_KEY = 'asteroidsSkin';
+let currentSkinId = loadSkin();
+
+function loadSkin() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved && SKINS.some(s => s.id === saved)) return saved;
+  } catch (e) { /* localStorage no disponible */ }
+  return SKINS[0].id;
+}
+
+function saveSkin() {
+  try { localStorage.setItem(STORAGE_KEY, currentSkinId); } catch (e) { /* ignorar */ }
+}
+
+function selectSkin(id) {
+  if (!SKINS.some(s => s.id === id)) return;
+  if (currentSkinId === id) return;
+  currentSkinId = id;
+  saveSkin();
+  skinToast = 2;
+  syncSkinButtons();
+}
+
+function cycleSkin() {
+  const i = SKINS.findIndex(s => s.id === currentSkinId);
+  selectSkin(SKINS[(i + 1) % SKINS.length].id);
+}
+
+let skinToast = 0;
+
+const skinButtons = document.querySelectorAll('#skinbar [data-skin]');
+function syncSkinButtons() {
+  for (const b of skinButtons) {
+    b.classList.toggle('active', b.dataset.skin === currentSkinId);
+  }
+}
+for (const b of skinButtons) {
+  b.addEventListener('click', () => selectSkin(b.dataset.skin));
+}
+syncSkinButtons();
+
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
   constructor() { this.reset(); }
@@ -199,29 +249,30 @@ class Ship {
     // Parpadeo durante invencibilidad de reaparición
     if (this.invincible > 0 && Math.floor(this.invincible * 8) % 2 === 0) return;
 
+    const skin = SKINS.find(s => s.id === currentSkinId);
+
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = skin.stroke;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
 
-    // Silueta clásica: triángulo con muesca trasera
+    // Silueta según la skin activa
     ctx.beginPath();
-    ctx.moveTo( 20,  0);   // nariz
-    ctx.lineTo(-12, -9);   // ala izquierda
-    ctx.lineTo( -7,  0);   // muesca trasera
-    ctx.lineTo(-12,  9);   // ala derecha
+    ctx.moveTo(skin.body[0][0], skin.body[0][1]);
+    for (let i = 1; i < skin.body.length; i++)
+      ctx.lineTo(skin.body[i][0], skin.body[i][1]);
     ctx.closePath();
     ctx.stroke();
 
     // Llama del propulsor
     if (this.thrusting && Math.random() > 0.35) {
       ctx.beginPath();
-      ctx.moveTo(-8, -4);
-      ctx.lineTo(-8 - rand(6, 14), 0);
-      ctx.lineTo(-8,  4);
-      ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
+      ctx.moveTo(skin.flameBase, -4);
+      ctx.lineTo(skin.flameBase - rand(6, 14), 0);
+      ctx.lineTo(skin.flameBase,  4);
+      ctx.strokeStyle = skin.flame;
       ctx.stroke();
     }
 
@@ -432,6 +483,9 @@ function killShip() {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  if (pressed('KeyC')) cycleSkin();
+  if (skinToast > 0) skinToast -= dt;
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
     particles.forEach(p => p.update(dt));
@@ -520,17 +574,19 @@ function update(dt) {
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function drawLifeIcon(x, y) {
+  const skin = SKINS.find(s => s.id === currentSkinId);
+  const s = 0.45;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth   = 1.2;
+  ctx.scale(s, s);
+  ctx.strokeStyle = skin.stroke;
+  ctx.lineWidth   = 2;
   ctx.lineJoin    = 'round';
   ctx.beginPath();
-  ctx.moveTo( 9,  0);
-  ctx.lineTo(-6, -5);
-  ctx.lineTo(-3,  0);
-  ctx.lineTo(-6,  5);
+  ctx.moveTo(skin.body[0][0], skin.body[0][1]);
+  for (let i = 1; i < skin.body.length; i++)
+    ctx.lineTo(skin.body[i][0], skin.body[i][1]);
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
@@ -575,6 +631,14 @@ function drawHUD() {
   for (let i = 0; i < lives; i++)
     drawLifeIcon(W - 16 - i * 22, 18);
 
+  if (skinToast > 0) {
+    const alpha = Math.min(1, skinToast);
+    const skin  = SKINS.find(s => s.id === currentSkinId);
+    ctx.textAlign = 'center';
+    ctx.font      = '15px monospace';
+    ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+    ctx.fillText(`SKIN: ${skin.name}   (C)`, W / 2, H - 18);
+  }
 }
 
 function drawOverlay(title, sub) {
