@@ -133,6 +133,7 @@ class Ship {
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.speedBoost    = 0;
+    this.shield        = 0;
     this.dead          = false;
   }
 
@@ -140,6 +141,7 @@ class Ship {
     if (this.dead) return;
     if (this.invincible    > 0) this.invincible    -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
+    if (this.shield        > 0) this.shield        -= dt;
 
     const ROT   = 3.5;   // rad/s
     const THRUST = 260;  // px/s²
@@ -177,6 +179,23 @@ class Ship {
 
   draw() {
     if (this.dead) return;
+
+    // Anillo del escudo (se dibuja aunque la nave parpadee por invencibilidad)
+    if (this.shield > 0) {
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.strokeStyle = 'rgba(0, 220, 255, 0.7)';
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 11, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Parpadeo durante invencibilidad de reaparición
     if (this.invincible > 0 && Math.floor(this.invincible * 8) % 2 === 0) return;
 
@@ -259,6 +278,66 @@ class PowerUp {
       ctx.closePath();
       ctx.fill();
     }
+    ctx.restore();
+  }
+}
+
+// ── Estrella-Fugaz (Escudo) ───────────────────────────────────────────────────
+class EstrellaFugaz {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 12;
+    this.ttl  = 3;
+    this.dead = false;
+
+    const angle = rand(0, Math.PI * 2);
+    const speed = rand(140, 200);
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.dir = angle;
+  }
+
+  update(dt) {
+    this.x = wrap(this.x + this.vx * dt, W);
+    this.y = wrap(this.y + this.vy * dt, H);
+    this.ttl -= dt;
+    if (this.ttl <= 0) this.dead = true;
+  }
+
+  draw() {
+    const blink = this.ttl < 1 && Math.floor(this.ttl * 8) % 2 === 0;
+    if (blink) return;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
+    // Estela (cometa) orientada en dirección de movimiento
+    ctx.strokeStyle = 'rgba(255, 200, 60, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 1; i <= 5; i++) {
+      const tx = -Math.cos(this.dir) * i * 8;
+      const ty = -Math.sin(this.dir) * i * 8;
+      if (i === 1) ctx.moveTo(tx, ty);
+      else ctx.lineTo(tx, ty);
+    }
+    ctx.stroke();
+
+    // Núcleo: estrella de 4 puntas dorada
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.moveTo( 0, -this.radius);
+    ctx.lineTo( 4, -4);
+    ctx.lineTo( this.radius, 0);
+    ctx.lineTo( 4,  4);
+    ctx.lineTo( 0,  this.radius);
+    ctx.lineTo(-4,  4);
+    ctx.lineTo(-this.radius, 0);
+    ctx.lineTo(-4, -4);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.restore();
   }
 }
@@ -393,9 +472,15 @@ function update(dt) {
         score += POINTS[a.size];
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
-        if (!powerupSpawned && powerups.length === 0 && Math.random() < 0.12) {
-          powerups.push(new PowerUp(a.x, a.y));
-          powerupSpawned = true;
+        if (!powerupSpawned && powerups.length === 0) {
+          const roll = Math.random();
+          if (roll < 0.08) {
+            powerups.push(new EstrellaFugaz(a.x, a.y));
+            powerupSpawned = true;
+          } else if (roll < 0.2) {
+            powerups.push(new PowerUp(a.x, a.y));
+            powerupSpawned = true;
+          }
         }
       }
     }
@@ -408,14 +493,19 @@ function update(dt) {
   for (const p of powerups) {
     if (!p.dead && dist(ship, p) < ship.radius + p.radius) {
       p.dead = true;
-      ship.speedBoost = 5;
-      explode(p.x, p.y, 6);
+      if (p instanceof EstrellaFugaz) {
+        ship.shield = 4;
+        explode(p.x, p.y, 10);
+      } else {
+        ship.speedBoost = 5;
+        explode(p.x, p.y, 6);
+      }
     }
   }
   powerups = powerups.filter(p => !p.dead);
 
   // Nave vs asteroide
-  if (ship.invincible <= 0) {
+  if (ship.invincible <= 0 && ship.shield <= 0) {
     for (const a of asteroids) {
       if (dist(ship, a) < ship.radius + a.radius * 0.82) {
         killShip();
@@ -467,6 +557,19 @@ function drawHUD() {
     ctx.fillRect(bx, 50, bw, 4);
     ctx.fillStyle = '#fff';
     ctx.fillRect(bx, 50, bw * (ship.speedBoost / 5), 4);
+  }
+
+  // Indicador del power-up Escudo (Estrella-Fugaz)
+  if (ship.shield > 0) {
+    ctx.font = '12px monospace';
+    ctx.fillStyle = 'rgba(0, 220, 255, 0.9)';
+    ctx.fillText('ESCUDO', W / 2, 62);
+    const bw = 90;
+    const bx = W / 2 - bw / 2;
+    ctx.fillStyle = 'rgba(0, 220, 255, 0.2)';
+    ctx.fillRect(bx, 68, bw, 4);
+    ctx.fillStyle = 'rgba(0, 220, 255, 1)';
+    ctx.fillRect(bx, 68, bw * (ship.shield / 4), 4);
   }
 
   for (let i = 0; i < lives; i++)
