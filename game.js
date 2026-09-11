@@ -159,7 +159,16 @@ const SKINS = [
   { id: 'viper',    name: 'VÍBORA',   stroke: '#ff5b4d', flame: 'rgba(255,80,40,0.85)',  body: [[21,0],[-6,-11],[-2,0],[-6,11]],   flameBase: -4 },
   { id: 'javelin',  name: 'JABALINA', stroke: '#4de1ff', flame: 'rgba(80,220,255,0.85)', body: [[22,0],[-2,-6],[-10,0],[-2,6]],    flameBase: -11 },
   { id: 'phoenix',  name: 'FÉNIX',    stroke: '#ffd24d', flame: 'rgba(255,180,60,0.85)', body: [[20,0],[-4,-12],[-14,-4],[-6,0],[-14,4],[-4,12]], flameBase: -7 },
+  { id: 'titan',    name: 'TITÁN',    stroke: '#b14dff', flame: 'rgba(177,77,255,0.85)', body: [[20,0],[-12,-10],[-7,0],[-12,10]], flameBase: -8, scale: 2, doublePoints: true },
 ];
+
+const skinScale = () => {
+  const s = SKINS.find(sk => sk.id === currentSkinId);
+  return s && s.scale ? s.scale : 1;
+};
+
+const scoreMultiplier = () =>
+  SKINS.some(s => s.id === currentSkinId && s.doublePoints) ? 2 : 1;
 
 const STORAGE_KEY = 'asteroidsSkin';
 let currentSkinId = loadSkin();
@@ -181,6 +190,7 @@ function selectSkin(id) {
   if (currentSkinId === id) return;
   currentSkinId = id;
   saveSkin();
+  if (typeof ship !== 'undefined') ship.radius = 12 * skinScale();
   skinToast = 2;
   syncSkinButtons();
 }
@@ -276,7 +286,7 @@ class Ship {
     this.angle  = -Math.PI / 2;
     this.vx     = 0;
     this.vy     = 0;
-    this.radius = 12;
+    this.radius = 12 * skinScale();
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
@@ -321,12 +331,13 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
+    const scale = skinScale();
+    const NOSE = 21 * scale;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
     if (this.tripleShot > 0) {
-      const px = -Math.sin(this.angle) * 12;
-      const py =  Math.cos(this.angle) * 12;
+      const px = -Math.sin(this.angle) * 12 * scale;
+      const py =  Math.cos(this.angle) * 12 * scale;
       return [
         new Bullet(ox - px, oy - py, this.angle),
         new Bullet(ox,      oy,      this.angle),
@@ -363,6 +374,7 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
+    ctx.scale(skinScale(), skinScale());
     ctx.strokeStyle = skin.stroke;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
@@ -687,7 +699,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * scoreMultiplier();
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
         if (!powerupSpawned && powerups.length === 0) {
@@ -709,7 +721,7 @@ function update(dt) {
       if (!o.dead && !b.dead && dist(b, o) < o.radius) {
         b.dead = true;
         o.dead = true;
-        score += 200;
+        score += 200 * scoreMultiplier();
         explode(o.x, o.y, 12, '199, 248, 62');
       }
     }
@@ -780,7 +792,7 @@ function update(dt) {
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function drawLifeIcon(x, y) {
   const skin = SKINS.find(s => s.id === currentSkinId);
-  const s = 0.45;
+  const s = 0.45 * (skin && skin.scale ? skin.scale : 1);
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
@@ -855,7 +867,7 @@ function drawHUD() {
     ctx.textAlign = 'center';
     ctx.font      = '15px monospace';
     ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
-    ctx.fillText(`SKIN: ${skin.name}   (C)`, W / 2, H - 18);
+    ctx.fillText(`SKIN: ${skin.name}${skin.doublePoints ? '  ×2 PUNTOS' : ''}   (C)`, W / 2, H - 18);
   }
 }
 
