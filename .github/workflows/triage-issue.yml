@@ -39,7 +39,7 @@ jobs:
               });
             }
 
-            const runner = `${context.runner.os}; commit ${process.env.GITHUB_SHA.slice(0, 7)}`;
+            const runner = `${context.runner.os}; commit ${context.sha.slice(0, 7)}`;
 
             const bodySnippet = (body.length > 280 ? body.slice(0, 280) + '…' : body) || '_sin descripción_';
             const snippet = bodySnippet.replace(/```/g, '\u200B```');
@@ -82,7 +82,7 @@ jobs:
 
             ### 📌 Contexto del repo
             - **Rama/ref:** \`${context.ref}\`
-            - **Commit:** \`${process.env.GITHUB_SHA}\` (runner: ${runner})
+            - **Commit:** \`${context.sha}\` (runner: ${runner})
             - **Fecha de ejecución:** ${new Date().toISOString()}
             ${enlaces.join('\n')}
             `;
