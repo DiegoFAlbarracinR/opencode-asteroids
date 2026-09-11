@@ -1,0 +1,94 @@
+name: Triage de issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title ? issue.title : '';
+            const body = issue.body ? issue.body : '';
+            const text = (title + '\n' + body).toLowerCase();
+
+            const rules = [
+              { label: 'bug', keywords: ['bug', 'error', 'falla', 'no funciona', 'no carga', 'no inicia', 'crash', 'se rompe', 'se congela', 'roto', 'glitch', 'pantalla negra'] },
+              { label: 'enhancement', keywords: ['mejora', 'feature', 'añadir', 'agregar', 'sugerencia', 'sugiero', 'nuevo', 'nueva', 'me gustaría', 'implementar'] },
+              { label: 'question', keywords: ['pregunta', 'duda', 'consulta', 'cómo hago', 'como hago', 'cómo se', 'como se', 'question'] },
+              { label: 'documentation', keywords: ['documentación', 'documentacion', 'docs', 'readme', 'tutorial', 'documentar'] },
+              { label: 'duplicate', keywords: ['duplicado', 'duplicate', 'igual que', 'ya existe'] },
+              { label: 'invalid', keywords: ['no es un bug', 'no es bug', 'invalid', 'no es problema'] },
+            ];
+
+            const labels = rules
+              .filter(r => r.keywords.some(k => text.includes(k)))
+              .map(r => r.label);
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                ...context.repo,
+                issue_number: issue.number,
+                labels,
+              });
+            }
+
+            const runner = `${context.runner.os}; commit ${process.env.GITHUB_SHA.slice(0, 7)}`;
+
+            const bodySnippet = (body.length > 280 ? body.slice(0, 280) + '…' : body) || '_sin descripción_';
+            const snippet = bodySnippet.replace(/```/g, '\u200B```');
+
+            const enlaces = [];
+            if (issue.html_url) enlaces.push(`- **Issue:** ${issue.html_url}`);
+            if (issue.user) enlaces.push(`- **Autor:** @${issue.user.login}`);
+
+            const comment = `## 🤖 Información añadida automáticamente
+
+            > El texto del autor se conservó **tal cual**. Esta información es generada por el workflow \`triage-issue.yml\` para facilitar la revisión.
+
+            ### 🏷️ Etiquetas aplicadas
+            ${labels.length > 0 ? labels.map(l => `- \`${l}\``).join('\n') : '_Ninguna (no se detectó palabra clave). Ajustar manualmente si aplica._'}
+
+            ### 📝 Resumen del issue
+
+            > ${snippet}
+
+            ### 📋 Ficha de chequeo (completa si aplica)
+            - [ ] Pasos para reproducir el problema
+            - [ ] Comportamiento esperado
+            - [ ] Comportamiento real / actual
+            - [ ] Captura de pantalla o video (adjuntar)
+
+            ### 🌐 Datos del entorno (responde a este comentario si falta)
+            > El bot no conoce tu navegador. Puedes copiar/rellenar esto en un comentario:
+
+            - **Sistema operativo:** _ej. Windows 11 / macOS / Linux_
+            - **Navegador y versión:** _ej. Chrome 126_
+            - **¿Cómo abriste el juego?** _A. Doble clic en \`index.html\` / B. \`npx serve .\`_
+            - **¿Ocurre siempre o a veces?**
+
+            ### 🗺️ Guía rápida del proyecto (para revisores)
+            - Todo el código vive en **\`game.js\`**; \`index.html\` define el canvas (800×600) y la barra de skins. Espacio toroidal (\`wrap\`).
+            - Entidades: \`Bullet\`, \`EnemyBullet\`, \`Asteroid\`, \`OVNI\`, \`Ship\`, \`PowerUp\`, \`TripleShot\`, \`EstrellaFugaz\`, \`Particle\`.
+            - ¡Cuidado! El **README.md está desactualizado**; confía en \`AGENTS.md\` y en el código.
+            - Strings de UI/HUD en **español** (\`NIVEL\`, \`PUNTAJE\`, \`GAME OVER\`).
+            - Input edge-triggered: usa **\`pressed(code)\`** para eventos de un solo disparo (disparo, reinicio).
+
+            ### 📌 Contexto del repo
+            - **Rama/ref:** \`${context.ref}\`
+            - **Commit:** \`${process.env.GITHUB_SHA}\` (runner: ${runner})
+            - **Fecha de ejecución:** ${new Date().toISOString()}
+            ${enlaces.join('\n')}
+            `;
+
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: issue.number,
+              body: comment,
+            });
