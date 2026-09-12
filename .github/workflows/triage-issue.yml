@@ -39,7 +39,7 @@ jobs:
               });
             }
 
-            const runner = `${context.runner.os}; commit ${context.sha.slice(0, 7)}`;
+            const runner = `${process.env.RUNNER_OS || 'desconocido'}; commit ${context.sha.slice(0, 7)}`;
 
             const bodySnippet = (body.length > 280 ? body.slice(0, 280) + '…' : body) || '_sin descripción_';
             const snippet = bodySnippet.replace(/```/g, '\u200B```');
